@@ -7,59 +7,74 @@
 
 import UIKit
 
-public enum DropState {
-    case Default, Info, Success, Warning, Error
-    
-    private func backgroundColor() -> UIColor? {
-        switch self {
-        case Default: return UIColor(red: 41/255.0, green: 128/255.0, blue: 185/255.0, alpha: 1.0)
-        case Info: return UIColor(red: 52/255.0, green: 152/255.0, blue: 219/255.0, alpha: 1.0)
-        case Success: return UIColor(red: 39/255.0, green: 174/255.0, blue: 96/255.0, alpha: 1.0)
-        case Warning: return UIColor(red: 241/255.0, green: 196/255.0, blue: 15/255.0, alpha: 1.0)
-        case Error: return UIColor(red: 192/255.0, green: 57/255.0, blue: 43/255.0, alpha: 1.0)
-        }
-    }
+public protocol DropStatable {
+    var backgroundColor: UIColor? { get }
+    var blurEffect: UIBlurEffect? { get }
+    var font: UIFont? { get }
+    var textColor: UIColor? { get }
 }
 
-public enum DropBlur {
-    case Light, ExtraLight, Dark
+public enum DropState: DropStatable {
+    case Default, Info, Success, Warning, Error, Color(UIColor), Blur(UIBlurEffectStyle)
     
-    private func blurEffect() -> UIBlurEffect {
+    public var backgroundColor: UIColor? {
         switch self {
-        case .Light: return UIBlurEffect(style: .Light)
-        case .ExtraLight: return UIBlurEffect(style: .ExtraLight)
-        case .Dark: return UIBlurEffect(style: .Dark)
+        case Default: return UIColor(red: 41/255.0, green: 128/255.0, blue: 185/255.0, alpha: 0.9)
+        case Info: return UIColor(red: 52/255.0, green: 152/255.0, blue: 219/255.0, alpha: 0.9)
+        case Success: return UIColor(red: 39/255.0, green: 174/255.0, blue: 96/255.0, alpha: 0.9)
+        case Warning: return UIColor(red: 241/255.0, green: 196/255.0, blue: 15/255.0, alpha: 0.9)
+        case Error: return UIColor(red: 192/255.0, green: 57/255.0, blue: 43/255.0, alpha: 0.9)
+        case Color(let color): return color
+        case Blur: return nil
+        }
+    }
+    
+    public var font: UIFont? {
+        switch self {
+        default: return UIFont.systemFontOfSize(17.0)
+        }
+    }
+    
+    public var textColor: UIColor? {
+        switch self {
+        default: return .whiteColor()
+        }
+    }
+    
+    public var blurEffect: UIBlurEffect? {
+        switch self {
+        case .Blur(let style): return UIBlurEffect(style: style)
+        default: return nil
         }
     }
 }
 
 public final class Drop: UIView {
-    private var backgroundView: UIView!
+    static let PRESET_DURATION: NSTimeInterval = 4.0
+    
     private var statusLabel: UILabel!
-    private var topConstraint: NSLayoutConstraint!
-    private var heightConstraint: NSLayoutConstraint!
     private let statusTopMargin: CGFloat = 10.0
     private let statusBottomMargin: CGFloat = 10.0
-    private var minimumHeight: CGFloat { return Drop.statusBarHeight() + 44.0 }
+    private var minimumHeight: CGFloat { return UIApplication.sharedApplication().statusBarFrame.height + 44.0 }
+    private var topConstraint: NSLayoutConstraint?
+    private var heightConstraint: NSLayoutConstraint?
+    
+    private var duration: NSTimeInterval = Drop.PRESET_DURATION
+    
     private var upTimer: NSTimer?
     private var startTop: CGFloat?
     
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        heightConstraint = NSLayoutConstraint(
-            item: self,
-            attribute: .Height,
-            relatedBy: .Equal,
-            toItem: nil,
-            attribute: .Height,
-            multiplier: 1.0,
-            constant: 100.0
-        )
-        self.addConstraint(heightConstraint)
-        scheduleUpTimer(4.0)
+    convenience init(duration: Double) {
+        self.init(frame: CGRect.zero)
+        self.duration = duration
         
+        scheduleUpTimer(duration)
         NSNotificationCenter.defaultCenter().addObserver(self, selector: "applicationDidEnterBackground:", name: UIApplicationDidEnterBackgroundNotification, object: nil)
         NSNotificationCenter.defaultCenter().addObserver(self, selector: "deviceOrientationDidChange:", name: UIDeviceOrientationDidChangeNotification, object: nil)
+    }
+    
+    override init(frame: CGRect) {
+        super.init(frame: frame)
     }
     
     required public init?(coder aDecoder: NSCoder) {
@@ -105,58 +120,50 @@ public final class Drop: UIView {
     }
     
     private func updateHeight() {
-        let calculatedHeight = self.statusLabel.frame.size.height + Drop.statusBarHeight() + statusTopMargin + statusBottomMargin
-        heightConstraint.constant = calculatedHeight > minimumHeight ? calculatedHeight : minimumHeight
+        var height: CGFloat = 0.0
+        height += UIApplication.sharedApplication().statusBarFrame.height
+        height += statusTopMargin
+        height += statusLabel.frame.size.height
+        height += statusBottomMargin
+        heightConstraint?.constant = height > minimumHeight ? height : minimumHeight
         self.layoutIfNeeded()
     }
 }
 
 extension Drop {
-    public class func down(status: String) {
-        down(status, state: .Default)
+    public class func down(status: String, state: DropState = .Default, duration: Double = Drop.PRESET_DURATION) {
+        show(status, state: state, duration: duration)
     }
     
-    public class func down(status: String, state: DropState) {
-        down(status, state: state, blur: nil)
+    public class func down<T: DropStatable>(status: String, state: T, duration: Double = Drop.PRESET_DURATION) {
+        show(status, state: state, duration: duration)
     }
     
-    public class func down(status: String, blur: DropBlur) {
-        down(status, state: nil, blur: blur)
-    }
-    
-    private class func down(status: String, state: DropState?, blur: DropBlur?) {
+    private class func show(status: String, state: DropStatable, duration: Double) {
         self.upAll()
-        let drop = Drop(frame: CGRectZero)
-        Drop.window().addSubview(drop)
+        let drop = Drop(duration: duration)
+        UIApplication.sharedApplication().keyWindow?.addSubview(drop)
+        guard let window = drop.window else { return }
         
-        let sideConstraints = ([.Left, .Right] as [NSLayoutAttribute]).map {
-            return NSLayoutConstraint(
-                item: drop,
-                attribute: $0,
-                relatedBy: .Equal,
-                toItem: Drop.window(),
-                attribute: $0,
-                multiplier: 1.0,
-                constant: 0.0
-            )
-        }
+        let heightConstraint = NSLayoutConstraint(item: drop, attribute: .Height, relatedBy: .Equal, toItem: nil, attribute: .Height, multiplier: 1.0, constant: 100.0)
+        drop.addConstraint(heightConstraint)
+        drop.heightConstraint = heightConstraint
         
-        drop.topConstraint = NSLayoutConstraint(
-            item: drop,
-            attribute: .Top,
-            relatedBy: .Equal,
-            toItem: Drop.window(),
-            attribute: .Top,
-            multiplier: 1.0,
-            constant: -drop.heightConstraint.constant
+        let topConstraint = NSLayoutConstraint(item: drop, attribute: .Top, relatedBy: .Equal, toItem: window, attribute: .Top, multiplier: 1.0, constant: -heightConstraint.constant)
+        drop.topConstraint = topConstraint
+        
+        window.addConstraints(
+            [
+                topConstraint,
+                NSLayoutConstraint(item: drop, attribute: .Left, relatedBy: .Equal, toItem: window, attribute: .Left, multiplier: 1.0,constant: 0.0),
+                NSLayoutConstraint(item: drop, attribute: .Right, relatedBy: .Equal, toItem: window, attribute: .Right, multiplier: 1.0,constant: 0.0)
+            ]
         )
         
-        Drop.window().addConstraints(sideConstraints)
-        Drop.window().addConstraint(drop.topConstraint)
-        drop.setup(status, state: state, blur: blur)
+        drop.setup(status, state: state)
         drop.updateHeight()
         
-        drop.topConstraint.constant = 0.0
+        topConstraint.constant = 0.0
         UIView.animateWithDuration(
             NSTimeInterval(0.25),
             delay: NSTimeInterval(0.0),
@@ -168,7 +175,8 @@ extension Drop {
     }
     
     private class func up(drop: Drop, interval: NSTimeInterval) {
-        drop.topConstraint.constant = -drop.heightConstraint.constant
+        guard let heightConstant = drop.heightConstraint?.constant else { return }
+        drop.topConstraint?.constant = -heightConstant
         UIView.animateWithDuration(
             interval,
             delay: NSTimeInterval(0.0),
@@ -183,7 +191,8 @@ extension Drop {
     }
     
     public class func upAll() {
-        for view in Drop.window().subviews {
+        guard let window = UIApplication.sharedApplication().keyWindow else { return }
+        for view in window.subviews {
             if let drop = view as? Drop {
                 drop.up()
             }
@@ -192,202 +201,72 @@ extension Drop {
 }
 
 extension Drop {
-    private func setup(status: String, state: DropState?, blur: DropBlur?) {
+    private func setup(status: String, state: DropStatable) {
         self.translatesAutoresizingMaskIntoConstraints = false
+        var labelParentView: UIView = self
         
-        if let blur = blur {
-            let blurEffect = blur.blurEffect()
-            
-            // Visual Effect View
+        let backgroundView = UIView(frame: CGRect.zero)
+        backgroundView.translatesAutoresizingMaskIntoConstraints = false
+        backgroundView.backgroundColor = state.backgroundColor
+        addSubview(backgroundView)
+        addConstraints(
+            [
+                NSLayoutConstraint(item: backgroundView, attribute: .Left, relatedBy: .Equal, toItem: self, attribute: .Left, multiplier: 1.0, constant: 0.0),
+                NSLayoutConstraint(item: backgroundView, attribute: .Top, relatedBy: .Equal, toItem: self, attribute: .Top, multiplier: 1.0, constant: -UIScreen.mainScreen().bounds.height),
+                NSLayoutConstraint(item: backgroundView, attribute: .Right, relatedBy: .Equal, toItem: self, attribute: .Right, multiplier: 1.0, constant: 0.0),
+                NSLayoutConstraint(item: backgroundView, attribute: .Bottom, relatedBy: .Equal, toItem: self, attribute: .Bottom, multiplier: 1.0, constant: 0.0),
+            ]
+        )
+        
+        if let blurEffect = state.blurEffect {
             let visualEffectView = UIVisualEffectView(effect: blurEffect)
             visualEffectView.translatesAutoresizingMaskIntoConstraints = false
-            self.addSubview(visualEffectView)
-            let visualEffectViewConstraints = ([.Right, .Bottom, .Left] as [NSLayoutAttribute]).map {
-                return NSLayoutConstraint(
-                    item: visualEffectView,
-                    attribute: $0,
-                    relatedBy: .Equal,
-                    toItem: self,
-                    attribute: $0,
-                    multiplier: 1.0,
-                    constant: 0.0
-                )
-            }
-            let topConstraint = NSLayoutConstraint(
-                item: visualEffectView,
-                attribute: .Top,
-                relatedBy: .Equal,
-                toItem: self,
-                attribute: .Top,
-                multiplier: 1.0,
-                constant: -UIScreen.mainScreen().bounds.height
+            addSubview(visualEffectView)
+            addConstraints(
+                [
+                    NSLayoutConstraint(item: visualEffectView, attribute: .Left, relatedBy: .Equal, toItem: self, attribute: .Left, multiplier: 1.0, constant: 0.0),
+                    NSLayoutConstraint(item: visualEffectView, attribute: .Top, relatedBy: .Equal, toItem: self, attribute: .Top, multiplier: 1.0, constant: -UIScreen.mainScreen().bounds.height),
+                    NSLayoutConstraint(item: visualEffectView, attribute: .Right, relatedBy: .Equal, toItem: self, attribute: .Right, multiplier: 1.0, constant: 0.0),
+                    NSLayoutConstraint(item: visualEffectView, attribute: .Bottom, relatedBy: .Equal, toItem: self, attribute: .Bottom, multiplier: 1.0, constant: 0.0),
+                ]
             )
             
-            self.addConstraints(visualEffectViewConstraints)
-            self.addConstraint(topConstraint)
-            self.backgroundView = visualEffectView
-            
-            // Vibrancy Effect View
             let vibrancyEffectView = UIVisualEffectView(effect: UIVibrancyEffect(forBlurEffect: blurEffect))
             vibrancyEffectView.translatesAutoresizingMaskIntoConstraints = false
             visualEffectView.contentView.addSubview(vibrancyEffectView)
-            let vibrancyLeft = NSLayoutConstraint(
-                item: vibrancyEffectView,
-                attribute: .Left,
-                relatedBy: .Equal,
-                toItem: visualEffectView.contentView,
-                attribute: .LeftMargin,
-                multiplier: 1.0,
-                constant: 0.0
+            visualEffectView.contentView.addConstraints(
+                [
+                    NSLayoutConstraint(item: vibrancyEffectView, attribute: .Left, relatedBy: .Equal, toItem: visualEffectView.contentView, attribute: .LeftMargin, multiplier: 1.0, constant: 0.0),
+                    NSLayoutConstraint(item: vibrancyEffectView, attribute: .Top, relatedBy: .Equal, toItem: visualEffectView.contentView, attribute: .Top, multiplier: 1.0, constant: 0.0),
+                    NSLayoutConstraint(item: vibrancyEffectView, attribute: .Right, relatedBy: .Equal, toItem: visualEffectView.contentView, attribute: .RightMargin, multiplier: 1.0, constant: 0.0),
+                    NSLayoutConstraint(item: vibrancyEffectView, attribute: .Bottom, relatedBy: .Equal, toItem: visualEffectView.contentView, attribute: .Bottom, multiplier: 1.0, constant: 0.0
+                    )
+                ]
             )
-            let vibrancyRight = NSLayoutConstraint(
-                item: vibrancyEffectView,
-                attribute: .Right,
-                relatedBy: .Equal,
-                toItem: visualEffectView.contentView,
-                attribute: .RightMargin,
-                multiplier: 1.0,
-                constant: 0.0
-            )
-            let vibrancyTop = NSLayoutConstraint(
-                item: vibrancyEffectView,
-                attribute: .Top,
-                relatedBy: .Equal,
-                toItem: visualEffectView.contentView,
-                attribute: .Top,
-                multiplier: 1.0,
-                constant: 0.0
-            )
-            let vibrancyBottom = NSLayoutConstraint(
-                item: vibrancyEffectView,
-                attribute: .Bottom,
-                relatedBy: .Equal,
-                toItem: visualEffectView.contentView,
-                attribute: .Bottom,
-                multiplier: 1.0,
-                constant: 0.0
-            )
-            visualEffectView.contentView.addConstraints([vibrancyTop, vibrancyRight, vibrancyBottom, vibrancyLeft])
             
-            // STATUS LABEL
-            let statusLabel = createStatusLabel(status, isVisualEffect: true)
-            vibrancyEffectView.contentView.addSubview(statusLabel)
-            let statusLeft = NSLayoutConstraint(
-                item: statusLabel,
-                attribute: .Left,
-                relatedBy: .Equal,
-                toItem: vibrancyEffectView.contentView,
-                attribute: .Left,
-                multiplier: 1.0,
-                constant: 0.0
-            )
-            let statusRight = NSLayoutConstraint(
-                item: statusLabel,
-                attribute: .Right,
-                relatedBy: .Equal,
-                toItem: vibrancyEffectView.contentView,
-                attribute: .Right,
-                multiplier: 1.0,
-                constant: 0.0
-            )
-            let statusBottom = NSLayoutConstraint(
-                item: statusLabel,
-                attribute: .Bottom,
-                relatedBy: .Equal,
-                toItem: vibrancyEffectView.contentView,
-                attribute: .Bottom,
-                multiplier: 1.0,
-                constant: -statusBottomMargin
-            )
-            vibrancyEffectView.contentView.addConstraints([statusRight, statusLeft, statusBottom])
-            self.statusLabel = statusLabel
+            labelParentView = vibrancyEffectView.contentView
         }
         
-        if let state = state {
-            // Background View
-            let backgroundView = UIView(frame: CGRectZero)
-            backgroundView.translatesAutoresizingMaskIntoConstraints = false
-            backgroundView.alpha = 0.9
-            backgroundView.backgroundColor = state.backgroundColor()
-            self.addSubview(backgroundView)
-            let backgroundConstraints = ([.Right, .Bottom, .Left] as [NSLayoutAttribute]).map {
-                return NSLayoutConstraint(
-                    item: backgroundView,
-                    attribute: $0,
-                    relatedBy: .Equal,
-                    toItem: self,
-                    attribute: $0,
-                    multiplier: 1.0,
-                    constant: 0.0
-                )
-            }
-            
-            let topConstraint = NSLayoutConstraint(
-                item: backgroundView,
-                attribute: .Top,
-                relatedBy: .Equal,
-                toItem: self,
-                attribute: .Top,
-                multiplier: 1.0,
-                constant: -UIScreen.mainScreen().bounds.height
-            )
-            
-            self.addConstraints(backgroundConstraints)
-            self.addConstraint(topConstraint)
-            self.backgroundView = backgroundView
-            
-            // Status Label
-            let statusLabel = createStatusLabel(status, isVisualEffect: false)
-            self.addSubview(statusLabel)
-            let statusLeft = NSLayoutConstraint(
-                item: statusLabel,
-                attribute: .Left,
-                relatedBy: .Equal,
-                toItem: self,
-                attribute: .LeftMargin,
-                multiplier: 1.0,
-                constant: 0.0
-            )
-            let statusRight = NSLayoutConstraint(
-                item: statusLabel,
-                attribute: .Right,
-                relatedBy: .Equal,
-                toItem: self,
-                attribute: .RightMargin,
-                multiplier: 1.0,
-                constant: 0.0
-            )
-            let statusBottom = NSLayoutConstraint(
-                item: statusLabel,
-                attribute: .Bottom,
-                relatedBy: .Equal,
-                toItem: self,
-                attribute: .Bottom,
-                multiplier: 1.0,
-                constant: -statusBottomMargin
-            )
-            self.addConstraints([statusLeft, statusRight, statusBottom])
-            self.statusLabel = statusLabel
-        }
+        let statusLabel = UILabel(frame: CGRect.zero)
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        statusLabel.numberOfLines = 0
+        statusLabel.font = state.font ?? UIFont.systemFontOfSize(17.0)
+        statusLabel.textAlignment = .Center
+        statusLabel.text = status
+        statusLabel.textColor = state.textColor ?? .whiteColor()
+        labelParentView.addSubview(statusLabel)
+        labelParentView.addConstraints(
+            [
+                NSLayoutConstraint(item: statusLabel, attribute: .Left, relatedBy: .Equal, toItem: labelParentView, attribute: .LeftMargin, multiplier: 1.0, constant: 0.0),
+                NSLayoutConstraint(item: statusLabel, attribute: .Right, relatedBy: .Equal, toItem: labelParentView, attribute: .RightMargin, multiplier: 1.0, constant: 0.0),
+                NSLayoutConstraint(item: statusLabel, attribute: .Bottom, relatedBy: .Equal, toItem: labelParentView, attribute: .Bottom, multiplier: 1.0, constant: -statusBottomMargin)
+            ]
+        )
+        self.statusLabel = statusLabel
         
         self.layoutIfNeeded()
-        
-        let tapRecognizer = UITapGestureRecognizer(target: self, action: "up:")
-        self.addGestureRecognizer(tapRecognizer)
-        
-        let panRecognizer = UIPanGestureRecognizer(target: self, action: "pan:")
-        self.addGestureRecognizer(panRecognizer)
-    }
-    
-    private func createStatusLabel(status: String, isVisualEffect: Bool) -> UILabel {
-        let label = UILabel(frame: CGRectZero)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.numberOfLines = 0
-        label.font = UIFont.preferredFontForTextStyle(UIFontTextStyleHeadline)
-        label.textAlignment = .Center
-        label.text = status
-        if !isVisualEffect { label.textColor = UIColor.whiteColor() }
-        return label
+        self.addGestureRecognizer(UITapGestureRecognizer(target: self, action: "up:"))
+        self.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: "pan:"))
     }
 }
 
@@ -401,22 +280,24 @@ extension Drop {
         switch pan.state {
         case .Began:
             stopUpTimer()
-            startTop = topConstraint.constant
+            guard let topConstant = topConstraint?.constant else { return }
+            startTop = topConstant
         case .Changed:
-            let translation = pan.translationInView(Drop.window())
+            guard let window = window else { break }
+            let translation = pan.translationInView(window)
             let top = startTop! + translation.y
             if top > 0.0 {
-                topConstraint.constant = top * 0.2
+                topConstraint?.constant = top * 0.2
             } else {
-                topConstraint.constant = top
+                topConstraint?.constant = top
             }
         case .Ended:
             startTop = nil
-            if topConstraint.constant < 0.0 {
+            if topConstraint?.constant < 0.0 {
                 scheduleUpTimer(0.0, interval: 0.1)
             } else {
-                scheduleUpTimer(4.0)
-                topConstraint.constant = 0.0
+                scheduleUpTimer(duration)
+                topConstraint?.constant = 0.0
                 UIView.animateWithDuration(
                     NSTimeInterval(0.1),
                     delay: NSTimeInterval(0.0),
@@ -431,15 +312,5 @@ extension Drop {
             scheduleUpTimer(2.0)
         case .Possible: break
         }
-    }
-}
-
-extension Drop {
-    private class func window() -> UIWindow {
-        return UIApplication.sharedApplication().keyWindow!
-    }
-    
-    private class func statusBarHeight() -> CGFloat {
-        return UIApplication.sharedApplication().statusBarFrame.size.height
     }
 }
