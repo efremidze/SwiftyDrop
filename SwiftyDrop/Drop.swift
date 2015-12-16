@@ -155,9 +155,10 @@ extension Drop {
         
         let overlayView = UIView()
         overlayView.frame = window.bounds
+        overlayView.autoresizingMask = [.FlexibleWidth, .FlexibleHeight]
+        window.insertSubview(overlayView, belowSubview: drop)
         let tapRecognizer = UITapGestureRecognizer(target: drop, action: "upAll:")
         overlayView.addGestureRecognizer(tapRecognizer)
-        window.addSubview(overlayView)
         drop.overlayView = overlayView
         
         let heightConstraint = NSLayoutConstraint(item: drop, attribute: .Height, relatedBy: .Equal, toItem: nil, attribute: .Height, multiplier: 1.0, constant: 100.0)
