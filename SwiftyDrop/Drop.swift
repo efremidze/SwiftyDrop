@@ -70,6 +70,8 @@ public final class Drop: UIView {
     private var upTimer: NSTimer?
     private var startTop: CGFloat?
     
+    private var overlayView: UIView?
+    
     convenience init(duration: Double) {
         self.init(frame: CGRect.zero)
         self.duration = duration
@@ -151,6 +153,13 @@ extension Drop {
         UIApplication.sharedApplication().keyWindow?.addSubview(drop)
         guard let window = drop.window else { return }
         
+        let overlayView = UIView()
+        overlayView.frame = window.bounds
+        let tapRecognizer = UITapGestureRecognizer(target: drop, action: "upAll:")
+        overlayView.addGestureRecognizer(tapRecognizer)
+        window.addSubview(overlayView)
+        drop.overlayView = overlayView
+        
         let heightConstraint = NSLayoutConstraint(item: drop, attribute: .Height, relatedBy: .Equal, toItem: nil, attribute: .Height, multiplier: 1.0, constant: 100.0)
         drop.addConstraint(heightConstraint)
         drop.heightConstraint = heightConstraint
@@ -187,7 +196,10 @@ extension Drop {
                     drop.layoutIfNeeded()
                 }
             }) { [weak drop] finished -> Void in
-                if let drop = drop { drop.removeFromSuperview() }
+                if let drop = drop {
+                    drop.overlayView?.removeFromSuperview()
+                    drop.removeFromSuperview()
+                }
         }
     }
     
@@ -272,6 +284,10 @@ extension Drop {
 }
 
 extension Drop {
+    func upAll(sender: AnyObject) {
+        Drop.upAll()
+    }
+    
     func up(sender: AnyObject) {
         self.up()
     }
