@@ -164,14 +164,9 @@ extension Drop {
         drop.updateHeight()
         
         topConstraint.constant = 0.0
-        UIView.animateWithDuration(
-            NSTimeInterval(0.25),
-            delay: NSTimeInterval(0.0),
-            options: [.AllowUserInteraction, .CurveEaseOut],
-            animations: { [weak drop] () -> Void in
-                if let drop = drop { drop.layoutIfNeeded() }
-            }, completion: nil
-        )
+        UIView.animateWithDuration(0.4, delay: 0, usingSpringWithDamping: 0.6, initialSpringVelocity: 1.0, options: [.AllowUserInteraction], animations: { [weak drop] in
+            if let drop = drop { drop.layoutIfNeeded() }
+        }, completion: nil)
     }
     
     private class func up(drop: Drop, interval: NSTimeInterval) {
