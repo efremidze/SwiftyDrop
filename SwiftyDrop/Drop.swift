@@ -70,7 +70,11 @@ public final class Drop: UIView {
     private var upTimer: NSTimer?
     private var startTop: CGFloat?
     
-    private var overlayView: UIView?
+    private static let window: UIWindow = {
+        let window = UIWindow()
+        window.windowLevel = UIWindowLevelStatusBar + 1
+        return window
+    }()
     
     convenience init(duration: Double) {
         self.init(frame: CGRect.zero)
@@ -149,17 +153,16 @@ extension Drop {
     
     private class func show(status: String, state: DropStatable, duration: Double) {
         self.upAll()
-        let drop = Drop(duration: duration)
-        UIApplication.sharedApplication().keyWindow?.addSubview(drop)
-        guard let window = drop.window else { return }
         
-        let overlayView = UIView()
-        overlayView.frame = window.bounds
-        overlayView.autoresizingMask = [.FlexibleWidth, .FlexibleHeight]
-        window.insertSubview(overlayView, belowSubview: drop)
+        let drop = Drop(duration: duration)
+        
+        window.frame = UIScreen.mainScreen().bounds
+        window.backgroundColor = .clearColor()
+        window.hidden = false
+        window.addSubview(drop)
+        
         let tapRecognizer = UITapGestureRecognizer(target: drop, action: "upAll:")
-        overlayView.addGestureRecognizer(tapRecognizer)
-        drop.overlayView = overlayView
+        window.addGestureRecognizer(tapRecognizer)
         
         let heightConstraint = NSLayoutConstraint(item: drop, attribute: .Height, relatedBy: .Equal, toItem: nil, attribute: .Height, multiplier: 1.0, constant: 100.0)
         drop.addConstraint(heightConstraint)
@@ -181,7 +184,7 @@ extension Drop {
         
         topConstraint.constant = 0.0
         UIView.animateWithDuration(0.4, delay: 0, usingSpringWithDamping: 0.6, initialSpringVelocity: 1.0, options: [.AllowUserInteraction], animations: { [weak drop] in
-            if let drop = drop { drop.layoutIfNeeded() }
+            drop?.layoutIfNeeded()
         }, completion: nil)
     }
     
@@ -192,20 +195,15 @@ extension Drop {
             interval,
             delay: NSTimeInterval(0.0),
             options: [.AllowUserInteraction, .CurveEaseIn],
-            animations: { [weak drop] () -> Void in
-                if let drop = drop {
-                    drop.layoutIfNeeded()
-                }
-            }) { [weak drop] finished -> Void in
-                if let drop = drop {
-                    drop.overlayView?.removeFromSuperview()
-                    drop.removeFromSuperview()
-                }
+            animations: { [weak drop] in
+                drop?.layoutIfNeeded()
+            }) { [weak drop, weak window] _ in
+                drop?.removeFromSuperview()
+                window?.hidden = true
         }
     }
     
     public class func upAll() {
-        guard let window = UIApplication.sharedApplication().keyWindow else { return }
         for view in window.subviews {
             if let drop = view as? Drop {
                 drop.up()
