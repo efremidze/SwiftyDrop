@@ -10,8 +10,26 @@ import UIKit
 public protocol DropStatable {
     var backgroundColor: UIColor? { get }
     var blurEffect: UIBlurEffect? { get }
-    var font: UIFont? { get }
     var textColor: UIColor? { get }
+    var font: UIFont? { get }
+}
+
+public extension DropStatable {
+    var backgroundColor: UIColor? {
+        return nil
+    }
+    
+    var blurEffect: UIBlurEffect? {
+        return nil
+    }
+    
+    var textColor: UIColor? {
+        return .whiteColor()
+    }
+    
+    var font: UIFont? {
+        return .systemFontOfSize(17.0)
+    }
 }
 
 public enum DropState: DropStatable {
@@ -26,18 +44,6 @@ public enum DropState: DropStatable {
         case Error: return UIColor(red: 192/255.0, green: 57/255.0, blue: 43/255.0, alpha: 0.9)
         case Color(let color): return color
         case Blur: return nil
-        }
-    }
-    
-    public var font: UIFont? {
-        switch self {
-        default: return UIFont.systemFontOfSize(17.0)
-        }
-    }
-    
-    public var textColor: UIColor? {
-        switch self {
-        default: return .whiteColor()
         }
     }
     
