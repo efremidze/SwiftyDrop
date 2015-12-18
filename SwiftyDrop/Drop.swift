@@ -205,9 +205,7 @@ extension Drop {
     
     public class func upAll() {
         for view in window.subviews {
-            if let drop = view as? Drop {
-                drop.up()
-            }
+            (view as? Drop)?.up()
         }
     }
 }
